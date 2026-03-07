@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>StoreSim - Product Browser</title>
+  <style>
+    /* ── Reset & tokens ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --primary: #f97316;
+      --primary-dark: #ea6a08;
+      --text: #111827;
+      --muted: #6b7280;
+      --sm: .85rem;
+      --radius: 10px;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,.14);
+      --sidebar-w: 240px;
+      --header-h: 62px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: var(--bg); color: var(--text); min-height: 100vh; }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; border: none; background: none; font: inherit; }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      height: var(--header-h);
+      background: var(--text); color: #fff;
+      display: flex; align-items: center; gap: 20px; padding: 0 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .brand { font-size: 1.3rem; font-weight: 700; white-space: nowrap; }
+    .brand span { color: var(--primary); }
+    .search-wrap { flex: 1; display: flex; max-width: 640px; }
+    .search-wrap input {
+      flex: 1; padding: 9px 14px; border: none; border-radius: var(--radius) 0 0 var(--radius);
+      font-size: .95rem; outline: none;
+    }
+    .search-wrap button {
+      padding: 9px 16px; background: var(--primary); color: #fff;
+      border-radius: 0 var(--radius) var(--radius) 0; font-size: .95rem;
+      transition: background .15s;
+    }
+    .search-wrap button:hover { background: var(--primary-dark); }
+    .sort-wrap { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: var(--sm); }
+    .sort-wrap select {
+      padding: 6px 8px; border-radius: 6px; border: 1px solid #555;
+      background: #2d2d2d; color: #fff; font-size: var(--sm); cursor: pointer;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .layout { display: flex; gap: 0; min-height: calc(100vh - var(--header-h)); }
+
+    /* ── Sidebar ──────────────────────────────────────────────────────── */
+    aside {
+      width: var(--sidebar-w); flex-shrink: 0;
+      background: var(--surface); border-right: 1px solid var(--border);
+      padding: 16px 0; overflow-y: auto;
+      position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h));
+    }
+    .filter-section { padding: 0 14px 14px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+    .filter-section:last-child { border-bottom: none; }
+    .filter-title { font-size: .75rem; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; margin-top: 10px; }
+
+    /* Category list */
+    .cat-list { list-style: none; }
+    .cat-list li { display: flex; align-items: center; justify-content: space-between; }
+    .cat-list button {
+      flex: 1; text-align: left; padding: 5px 8px; border-radius: 6px;
+      font-size: var(--sm); transition: background .12s; color: var(--text);
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    }
+    .cat-list button:hover { background: #f3f4f6; }
+    .cat-list button.active { background: #fff3e8; color: var(--primary); font-weight: 600; }
+    .cat-list .count { font-size: .75rem; color: var(--muted); background: var(--bg);
+                       padding: 1px 6px; border-radius: 99px; }
+    .cat-list button.active .count { background: #fde1c4; color: var(--primary-dark); }
+
+    /* Filter inputs */
+    .filter-row { display: flex; flex-direction: column; gap: 8px; }
+    .filter-row label { font-size: var(--sm); color: var(--muted); }
+    .filter-row input[type="number"] {
+      width: 100%; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: var(--sm);
+    }
+    .stars-row { display: flex; gap: 4px; flex-wrap: wrap; }
+    .star-btn {
+      padding: 4px 10px; border-radius: 99px; border: 1px solid var(--border);
+      font-size: var(--sm); background: var(--surface); transition: all .12s;
+    }
+    .star-btn:hover, .star-btn.active {
+      background: var(--primary); color: #fff; border-color: var(--primary);
+    }
+    .apply-btn {
+      width: 100%; padding: 8px; background: var(--primary); color: #fff;
+      border-radius: 8px; font-size: var(--sm); font-weight: 600; margin-top: 8px;
+      transition: background .15s;
+    }
+    .apply-btn:hover { background: var(--primary-dark); }
+    .clear-btn {
+      width: 100%; padding: 6px; background: none; color: var(--muted); border: 1px solid var(--border);
+      border-radius: 8px; font-size: var(--sm); margin-top: 4px; transition: all .12s;
+    }
+    .clear-btn:hover { border-color: var(--text); color: var(--text); }
+
+    /* ── Main ────────────────────────────────────────────────────────── */
+    main { flex: 1; padding: 20px; min-width: 0; }
+    .results-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; font-size: var(--sm); color: var(--muted);
+    }
+    .results-bar strong { color: var(--text); }
+
+    /* ── Product Grid ────────────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    /* ── Product Card ────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; cursor: pointer;
+      transition: box-shadow .18s, transform .18s;
+      display: flex; flex-direction: column;
+    }
+    .card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+    .card-img {
+      width: 100%; aspect-ratio: 1;
+      object-fit: contain; padding: 10px;
+      background: #fff; border-bottom: 1px solid var(--border);
+    }
+    .card-img-placeholder {
+      width: 100%; aspect-ratio: 1;
+      background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+      display: flex; align-items: center; justify-content: center;
+      color: #9ca3af; font-size: 2rem;
+    }
+    .card-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .card-title {
+      font-size: .83rem; font-weight: 500; line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .card-cat { font-size: .72rem; color: var(--muted); }
+    .card-footer { padding: 8px 12px; border-top: 1px solid var(--border);
+                   display: flex; align-items: center; justify-content: space-between; }
+    .card-price { font-weight: 700; color: #b12704; font-size: .92rem; }
+    .card-price.na { color: var(--muted); font-weight: 400; }
+    .card-rating { display: flex; align-items: center; gap: 4px; font-size: .78rem; }
+    .stars { color: #e47911; font-size: .8rem; }
+    .rev-count { color: var(--muted); }
+
+    /* ── Skeleton ────────────────────────────────────────────────────── */
+    .skeleton { background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+                background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .sk-img { width: 100%; aspect-ratio: 1; }
+    .sk-line { height: 12px; margin: 6px 12px; }
+    .sk-line.short { width: 60%; }
+
+    /* ── Pagination ──────────────────────────────────────────────────── */
+    .pagination { display: flex; align-items: center; justify-content: center;
+                  gap: 6px; margin-top: 28px; flex-wrap: wrap; }
+    .pg-btn {
+      min-width: 36px; height: 36px; padding: 0 10px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); font-size: var(--sm);
+      transition: all .12s; display: flex; align-items: center; justify-content: center;
+    }
+    .pg-btn:hover:not(:disabled) { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .pg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 700; }
+    .pg-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .pg-ellipsis { color: var(--muted); font-size: var(--sm); }
+
+    /* ── Modal ───────────────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+      padding: 20px; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--surface); border-radius: 14px;
+      max-width: 860px; width: 100%; max-height: 88vh; overflow-y: auto;
+      box-shadow: var(--shadow-lg); transform: translateY(20px); transition: transform .2s;
+    }
+    .overlay.open .modal { transform: translateY(0); }
+    .modal-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      padding: 18px 20px 12px; border-bottom: 1px solid var(--border); gap: 12px;
+    }
+    .modal-header h2 { font-size: 1.05rem; font-weight: 700; line-height: 1.4; }
+    .close-btn { font-size: 1.4rem; color: var(--muted); flex-shrink: 0;
+                 width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+                 border-radius: 50%; transition: background .12s; }
+    .close-btn:hover { background: var(--bg); }
+    .modal-body {
+      display: grid; grid-template-columns: 280px 1fr; gap: 0;
+    }
+    @media (max-width: 600px) { .modal-body { grid-template-columns: 1fr; } }
+    .modal-img-wrap {
+      padding: 20px; border-right: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: center;
+    }
+    .modal-img { width: 100%; max-width: 240px; border-radius: 8px; object-fit: contain; }
+    .modal-info { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+    .modal-meta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .modal-price { font-size: 1.4rem; font-weight: 700; color: #b12704; }
+    .modal-price.na { font-size: 1rem; color: var(--muted); font-weight: 400; }
+    .modal-rating { font-size: .9rem; color: var(--muted); }
+    .modal-rating .stars { font-size: .95rem; }
+    .badge {
+      font-size: .72rem; padding: 2px 8px; border-radius: 99px;
+      background: #f3f4f6; color: var(--muted); border: 1px solid var(--border);
+    }
+    .modal-section h3 { font-size: .78rem; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+    .modal-desc { font-size: .88rem; line-height: 1.65; color: #374151;
+                  max-height: 200px; overflow-y: auto; }
+    .modal-features { padding-left: 18px; font-size: .88rem; line-height: 1.8; color: #374151; }
+    .modal-features li { margin-bottom: 2px; }
+    .modal-details { font-size: .82rem; color: var(--muted); line-height: 1.7;
+                     background: var(--bg); padding: 10px 12px; border-radius: 8px; }
+    .store-row { font-size: var(--sm); color: var(--muted); }
+    .store-row strong { color: var(--text); }
+
+    /* ── Empty state ────────────────────────────────────────────────── */
+    .empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty h3 { font-size: 1.1rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+
+    /* ── Toast ──────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 300;
+      background: #1f2937; color: #fff; padding: 10px 18px;
+      border-radius: 8px; font-size: var(--sm); box-shadow: var(--shadow-lg);
+      transform: translateY(60px); opacity: 0; transition: all .25s;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────────────────────── -->
+<header>
+  <div class="brand">Store<span>Sim</span></div>
+  <div class="search-wrap">
+    <input id="searchInput" type="text" placeholder="Search products…" autocomplete="off"/>
+    <button onclick="doSearch()">🔍</button>
+  </div>
+  <div class="sort-wrap">
+    Sort
+    <select id="sortSelect" onchange="doSearch()">
+      <option value="rating_number">Most Reviewed</option>
+      <option value="average_rating">Highest Rated</option>
+      <option value="price">Price ↑</option>
+      <option value="title">Name A-Z</option>
+    </select>
+  </div>
+</header>
+
+<!-- ── Layout ───────────────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <!-- Categories -->
+    <div class="filter-section">
+      <div class="filter-title">Category</div>
+      <ul class="cat-list" id="catList">
+        <li><button class="active" data-cat="" onclick="selectCategory(this,'')">
+          <span>All</span>
+        </button></li>
+      </ul>
+    </div>
+
+    <!-- Rating -->
+    <div class="filter-section">
+      <div class="filter-title">Min Rating</div>
+      <div class="stars-row" id="starsRow">
+        <button class="star-btn active" data-rating="0" onclick="selectRating(this,0)">Any</button>
+        <button class="star-btn" data-rating="3" onclick="selectRating(this,3)">3★+</button>
+        <button class="star-btn" data-rating="4" onclick="selectRating(this,4)">4★+</button>
+        <button class="star-btn" data-rating="4.5" onclick="selectRating(this,4.5)">4.5★+</button>
+      </div>
+    </div>
+
+    <!-- Price -->
+    <div class="filter-section">
+      <div class="filter-title">Max Price</div>
+      <div class="filter-row">
+        <label>$0 = no limit</label>
+        <input type="number" id="maxPrice" min="0" step="1" placeholder="e.g. 50"/>
+      </div>
+      <button class="apply-btn" onclick="doSearch()">Apply Filters</button>
+      <button class="clear-btn" onclick="clearFilters()">Clear All</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main>
+    <div class="results-bar">
+      <span id="resultsLabel">Loading…</span>
+    </div>
+    <div class="grid" id="productGrid"></div>
+    <div class="pagination" id="pagination"></div>
+  </main>
+</div>
+
+<!-- ── Modal ────────────────────────────────────────────────────────────── -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle"></h2>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-img-wrap">
+        <img id="modalImg" class="modal-img" alt=""/>
+      </div>
+      <div class="modal-info" id="modalInfo"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  page: 1,
+  perPage: 24,
+  category: '',
+  search: '',
+  minRating: 0,
+  maxPrice: 0,
+  sort: 'rating_number',
+};
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(async function init() {
+  await loadCategories();
+  await loadProducts();
+  document.getElementById('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+  });
+})();
+
+// ── Categories ─────────────────────────────────────────────────────────────
+async function loadCategories() {
+  const res = await fetch('/api/categories');
+  const cats = await res.json();
+  const ul = document.getElementById('catList');
+  cats.forEach(c => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button data-cat="${esc(c.category)}" onclick="selectCategory(this,'${esc(c.category)}')">
+      <span>${esc(c.category)}</span>
+      <span class="count">${c.count.toLocaleString()}</span>
+    </button>`;
+    ul.appendChild(li);
+  });
+}
+
+function selectCategory(btn, cat) {
+  document.querySelectorAll('.cat-list button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.category = cat;
+  state.page = 1;
+  loadProducts();
+}
+
+// ── Rating ─────────────────────────────────────────────────────────────────
+function selectRating(btn, rating) {
+  document.querySelectorAll('.star-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.minRating = rating;
+}
+
+// ── Search / Filters ───────────────────────────────────────────────────────
+function doSearch() {
+  state.search = document.getElementById('searchInput').value.trim();
+  state.sort = document.getElementById('sortSelect').value;
+  const mp = parseFloat(document.getElementById('maxPrice').value) || 0;
+  state.maxPrice = mp;
+  state.page = 1;
+  loadProducts();
+}
+
+function clearFilters() {
+  state.search = '';
+  state.category = '';
+  state.minRating = 0;
+  state.maxPrice = 0;
+  state.sort = 'rating_number';
+  state.page = 1;
+  document.getElementById('searchInput').value = '';
+  document.getElementById('maxPrice').value = '';
+  document.getElementById('sortSelect').value = 'rating_number';
+  document.querySelectorAll('.cat-list button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.cat-list button[data-cat=""]').classList.add('active');
+  document.querySelectorAll('.star-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.star-btn[data-rating="0"]').classList.add('active');
+  loadProducts();
+}
+
+// ── Load Products ──────────────────────────────────────────────────────────
+async function loadProducts() {
+  const grid = document.getElementById('productGrid');
+  grid.innerHTML = Array(state.perPage).fill(skeletonCard()).join('');
+  document.getElementById('pagination').innerHTML = '';
+  document.getElementById('resultsLabel').textContent = 'Loading…';
+
+  const params = new URLSearchParams({
+    page: state.page,
+    per_page: state.perPage,
+    category: state.category,
+    search: state.search,
+    min_rating: state.minRating,
+    max_price: state.maxPrice,
+    sort: state.sort,
+  });
+
+  try {
+    const res = await fetch(`/api/products?${params}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    renderProducts(data);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><h3>Failed to load products</h3><p>${e.message}</p></div>`;
+    showToast('Error loading products');
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderProducts(data) {
+  const grid = document.getElementById('productGrid');
+  const start = (data.page - 1) * data.per_page + 1;
+  const end = start + data.results.length - 1;
+
+  document.getElementById('resultsLabel').innerHTML =
+    data.total === 0 ? 'No products found'
+    : `Showing <strong>${start}-${end}</strong> of <strong>${data.total.toLocaleString()}</strong> products`;
+
+  if (data.results.length === 0) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <div class="empty-icon">🔍</div>
+      <h3>No products found</h3>
+      <p>Try adjusting your filters or search term.</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = data.results.map(p => productCard(p)).join('');
+  renderPagination(data.page, data.total_pages);
+}
+
+function productCard(p) {
+  const stars = starsHtml(p.average_rating);
+  const price = p.price != null ? `$${p.price.toFixed(2)}` : null;
+  const rev = p.rating_number != null ? p.rating_number.toLocaleString() : '';
+  const imgHtml = p.image
+    ? `<img class="card-img" src="${esc(p.image)}" alt="${esc(p.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    + `<div class="card-img-placeholder" style="display:none">📦</div>`
+    : `<div class="card-img-placeholder">📦</div>`;
+
+  return `<div class="card" onclick="openProduct('${esc(p.asin)}')">
+    ${imgHtml}
+    <div class="card-body">
+      <div class="card-title">${esc(p.title)}</div>
+      <div class="card-cat">${esc(p.main_category || '')}</div>
+    </div>
+    <div class="card-footer">
+      <span class="card-price ${price ? '' : 'na'}">${price || '—'}</span>
+      <span class="card-rating"><span class="stars">${stars}</span><span class="rev-count">${rev}</span></span>
+    </div>
+  </div>`;
+}
+
+function skeletonCard() {
+  return `<div class="card">
+    <div class="skeleton sk-img"></div>
+    <div class="card-body">
+      <div class="skeleton sk-line" style="width:90%"></div>
+      <div class="skeleton sk-line" style="width:70%"></div>
+      <div class="skeleton sk-line short"></div>
+    </div>
+  </div>`;
+}
+
+// ── Pagination ─────────────────────────────────────────────────────────────
+function renderPagination(current, total) {
+  if (total <= 1) return;
+  const pg = document.getElementById('pagination');
+  const pages = pageRange(current, total);
+  let html = `<button class="pg-btn" onclick="goPage(${current-1})" ${current===1?'disabled':''}>‹ Prev</button>`;
+  let prev = null;
+  pages.forEach(p => {
+    if (prev !== null && p - prev > 1) html += `<span class="pg-ellipsis">…</span>`;
+    html += `<button class="pg-btn ${p===current?'active':''}" onclick="goPage(${p})">${p}</button>`;
+    prev = p;
+  });
+  html += `<button class="pg-btn" onclick="goPage(${current+1})" ${current===total?'disabled':''}>Next ›</button>`;
+  pg.innerHTML = html;
+}
+
+function pageRange(current, total) {
+  const delta = 2, range = [], rangeWithDots = [];
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) range.push(i);
+  if (current - delta > 2) range.unshift('…'); else if (current - delta === 2) range.unshift(2);
+  if (current + delta < total - 1) range.push('…'); else if (current + delta === total - 1) range.push(total - 1);
+  return [1, ...range.filter(x => typeof x === 'number'), total];
+}
+
+function goPage(p) {
+  state.page = p;
+  loadProducts();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Product Modal ──────────────────────────────────────────────────────────
+async function openProduct(asin) {
+  const overlay = document.getElementById('overlay');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalImg = document.getElementById('modalImg');
+  const modalInfo = document.getElementById('modalInfo');
+
+  modalTitle.textContent = 'Loading…';
+  modalImg.src = '';
+  modalInfo.innerHTML = '<div class="skeleton sk-line" style="width:80%;margin:10px 0"></div>'.repeat(5);
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const res = await fetch(`/api/product/${encodeURIComponent(asin)}`);
+    if (!res.ok) throw new Error('Not found');
+    const p = await res.json();
+
+    modalTitle.textContent = p.title || 'Unknown product';
+    modalImg.src = p.image || '';
+    modalImg.alt = p.title || '';
+    if (!p.image) {
+      document.querySelector('.modal-img-wrap').innerHTML = `<div class="card-img-placeholder" style="width:200px;height:200px;border-radius:8px">📦</div>`;
+    }
+
+    const price = p.price != null ? `<span class="modal-price">$${p.price.toFixed(2)}</span>` : `<span class="modal-price na">Price unavailable</span>`;
+    const rating = p.average_rating != null
+      ? `<span class="modal-rating"><span class="stars">${starsHtml(p.average_rating)}</span> ${p.average_rating} (${(p.rating_number||0).toLocaleString()} reviews)</span>`
+      : '';
+    const cat = p.main_category ? `<span class="badge">${esc(p.main_category)}</span>` : '';
+    const cats = (p.categories||[]).slice(0,3).map(c => `<span class="badge">${esc(c)}</span>`).join('');
+    const store = p.store ? `<div class="store-row">Sold by <strong>${esc(p.store)}</strong></div>` : '';
+    const asinRow = `<div class="store-row">ASIN: <strong>${esc(p.asin)}</strong></div>`;
+    const date = p.date_first_available ? `<div class="store-row">Available since <strong>${esc(p.date_first_available.split('T')[0])}</strong></div>` : '';
+
+    const descHtml = p.description
+      ? `<div class="modal-section"><h3>Description</h3><div class="modal-desc">${esc(p.description).replace(/\n/g,'<br>')}</div></div>`
+      : '';
+    const featsHtml = p.features && p.features.length
+      ? `<div class="modal-section"><h3>Features</h3><ul class="modal-features">${p.features.map(f=>`<li>${esc(f)}</li>`).join('')}</ul></div>`
+      : '';
+    const detailsHtml = p.details
+      ? `<div class="modal-section"><h3>Details</h3><div class="modal-details">${esc(p.details).replace(/\n/g,'<br>').replace(/[{}']/g,'')}</div></div>`
+      : '';
+
+    modalInfo.innerHTML = `
+      <div class="modal-meta">${price}${rating}${cat}${cats}</div>
+      ${store}${asinRow}${date}
+      ${descHtml}${featsHtml}${detailsHtml}`;
+  } catch (e) {
+    modalInfo.innerHTML = `<p style="color:red">Failed to load product details.</p>`;
+  }
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('overlay')) return;
+  document.getElementById('overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function starsHtml(rating) {
+  if (rating == null) return '';
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.25 && rating - full < 0.75;
+  const empty = 5 - full - (half ? 1 : 0);
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showToast(msg, dur=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+</script>
+</body>
+</html>

@@ -1,34 +1,44 @@
 #!/usr/bin/env bash
-# Setup GitHub branch protection for main.
-# Requires: gh CLI authenticated with admin access to the repo.
+# Setup GitHub branch protection for main using the GitHub REST API via curl.
 #
-# Required status checks (must match job names in .github/workflows/ci.yml):
-#   - "Lint & Type Check"
-#   - "Tests (Python 3.10)" / "Tests (Python 3.11)" / "Tests (Python 3.12)"
-#   - "pre-commit"
+# Requires a GitHub personal access token (classic, with repo scope) or a
+# fine-grained token with "Administration" read/write on the repository.
 #
-# Run once after pushing the CI workflow to GitHub.
+# Usage:
+#   GITHUB_TOKEN=ghp_... bash scripts/setup_branch_protection.sh
+#
+# Required status checks match the exact context names reported by
+# GitHub Actions: "<workflow_name> / <job_display_name>"
+# Workflow name is "CI" (name: field in ci.yml).
 
 set -euo pipefail
 
 REPO="SavaStevanovic/StoreSim"
 
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+  echo "Error: GITHUB_TOKEN environment variable is not set." >&2
+  echo "Usage: GITHUB_TOKEN=ghp_... bash $0" >&2
+  exit 1
+fi
+
 echo "Configuring branch protection for 'main' on $REPO ..."
 
-gh api \
-  --method PUT \
+curl -fsSL \
+  -X PUT \
   -H "Accept: application/vnd.github+json" \
-  "/repos/$REPO/branches/main/protection" \
-  --input - <<'EOF'
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "https://api.github.com/repos/$REPO/branches/main/protection" \
+  -d @- <<'EOF'
 {
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "Lint & Type Check",
-      "Tests (Python 3.10)",
-      "Tests (Python 3.11)",
-      "Tests (Python 3.12)",
-      "pre-commit"
+      "CI / Lint & Type Check",
+      "CI / Tests (Python 3.10)",
+      "CI / Tests (Python 3.11)",
+      "CI / Tests (Python 3.12)",
+      "CI / pre-commit"
     ]
   },
   "enforce_admins": true,
@@ -43,4 +53,4 @@ gh api \
 }
 EOF
 
-echo "Branch protection configured. Direct pushes to main are now blocked."
+echo "Done. Branch protection on 'main' updated."

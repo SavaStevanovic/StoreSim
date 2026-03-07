@@ -1,0 +1,6 @@
+outs:
+- md5: 16213acff914ad7e1b826188376d97ab.dir
+  size: 912819893
+  nfiles: 3
+  hash: md5
+  path: amazon_products_2023
