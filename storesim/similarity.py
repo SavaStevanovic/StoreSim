@@ -20,9 +20,7 @@ class SimilaritySearch:
         labels: list[str] | None = None,
     ) -> None:
         if embeddings.ndim != 2:
-            raise ValueError(
-                f"embeddings must be 2-D, got shape {tuple(embeddings.shape)}"
-            )
+            raise ValueError(f"embeddings must be 2-D, got shape {tuple(embeddings.shape)}")
         self.embeddings = embeddings.float()
         self.labels = labels
 
@@ -51,9 +49,7 @@ class SimilaritySearch:
         if query_embedding.ndim == 1:
             query_embedding = query_embedding.unsqueeze(0)
 
-        query_embedding = torch.nn.functional.normalize(
-            query_embedding.float(), dim=-1
-        )
+        query_embedding = torch.nn.functional.normalize(query_embedding.float(), dim=-1)
         scores = (query_embedding @ self.embeddings.T).squeeze(0)
 
         top_k = min(top_k, scores.shape[0])
@@ -98,7 +94,7 @@ class SimilaritySearch:
         torch.save({"embeddings": self.embeddings, "labels": self.labels}, path)
 
     @classmethod
-    def load(cls, path: str) -> "SimilaritySearch":
+    def load(cls, path: str) -> SimilaritySearch:
         """Load an index previously saved with :meth:`save`.
 
         Args:

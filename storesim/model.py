@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Union
+from typing import cast
 
 import open_clip
 import torch
@@ -45,7 +45,7 @@ class CLIPResNet50Model:
 
     def encode_image(
         self,
-        image: Union[str, Path, Image.Image],
+        image: str | Path | Image.Image,
         normalize: bool = True,
     ) -> torch.Tensor:
         """Encode a single image to a feature vector.
@@ -62,16 +62,16 @@ class CLIPResNet50Model:
         image_input = self.preprocess(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            features = self.model.encode_image(image_input)
+            raw = self.model.encode_image(image_input)
 
-        features = features.squeeze(0).float()
+        features: torch.Tensor = cast(torch.Tensor, raw).squeeze(0).float()
         if normalize:
             features = torch.nn.functional.normalize(features, dim=-1)
         return features.cpu()
 
     def encode_text(
         self,
-        text: Union[str, list[str]],
+        text: str | list[str],
         normalize: bool = True,
     ) -> torch.Tensor:
         """Encode one or more text strings to feature vectors.
@@ -85,14 +85,17 @@ class CLIPResNet50Model:
             ``(N, embedding_dim)`` for a list, always on CPU.
         """
         single = isinstance(text, str)
-        if single:
-            text = [text]
+        texts: list[str]
+        if isinstance(text, str):
+            texts = [text]
+        else:
+            texts = text
 
-        tokens = self.tokenizer(text).to(self.device)
+        tokens = self.tokenizer(texts).to(self.device)
         with torch.no_grad():
-            features = self.model.encode_text(tokens)
+            raw = self.model.encode_text(tokens)
 
-        features = features.float()
+        features: torch.Tensor = cast(torch.Tensor, raw).float()
         if normalize:
             features = torch.nn.functional.normalize(features, dim=-1)
 
@@ -102,5 +105,4 @@ class CLIPResNet50Model:
     @property
     def embedding_dim(self) -> int:
         """Return the dimensionality of the output embeddings (1024 for RN50)."""
-        return self.model.visual.output_dim
-
+        return int(self.model.visual.output_dim)

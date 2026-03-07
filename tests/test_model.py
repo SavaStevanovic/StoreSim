@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
 from tests.conftest import EMBEDDING_DIM
 
@@ -13,13 +12,14 @@ class TestCLIPResNet50Model:
         """Model should request 'RN50' from open_clip.create_model_and_transforms."""
         from storesim.model import CLIPResNet50Model
 
-        model = CLIPResNet50Model(device="cpu")
+        CLIPResNet50Model(device="cpu")
         call_args = mock_clip["create"].call_args
         assert call_args[0][0] == "RN50" or call_args[1].get("model_name") == "RN50"
 
     def test_default_device_is_cpu_or_cuda(self, mock_clip):
         """Device defaults to 'cpu' when CUDA is unavailable."""
         import storesim.model as m
+
         model = m.CLIPResNet50Model(device="cpu")
         assert model.device == "cpu"
 

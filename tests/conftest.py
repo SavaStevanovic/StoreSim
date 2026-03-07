@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
 import torch
 from PIL import Image
-from unittest.mock import MagicMock, patch
-
 
 EMBEDDING_DIM = 1024  # RN50 output dimension
 
@@ -15,6 +15,7 @@ EMBEDDING_DIM = 1024  # RN50 output dimension
 # ---------------------------------------------------------------------------
 # Mock open_clip model, preprocess and tokenizer
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_open_clip_model(embedding_dim: int = EMBEDDING_DIM) -> MagicMock:
     """Return a MagicMock that behaves like open_clip's model object."""
@@ -58,6 +59,7 @@ def _make_mock_tokenizer() -> MagicMock:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mock_clip(monkeypatch):
     """Patch open_clip.create_model_and_transforms and get_tokenizer."""
@@ -65,13 +67,16 @@ def mock_clip(monkeypatch):
     mock_preprocess = _make_mock_preprocess()
     mock_tokenizer = _make_mock_tokenizer()
 
-    with patch(
-        "open_clip.create_model_and_transforms",
-        return_value=(mock_model, None, mock_preprocess),
-    ) as mock_create, patch(
-        "open_clip.get_tokenizer",
-        return_value=mock_tokenizer,
-    ) as mock_get_tokenizer:
+    with (
+        patch(
+            "open_clip.create_model_and_transforms",
+            return_value=(mock_model, None, mock_preprocess),
+        ) as mock_create,
+        patch(
+            "open_clip.get_tokenizer",
+            return_value=mock_tokenizer,
+        ) as mock_get_tokenizer,
+    ):
         yield {
             "create": mock_create,
             "get_tokenizer": mock_get_tokenizer,
@@ -85,6 +90,7 @@ def mock_clip(monkeypatch):
 def clip_model(mock_clip):
     """Return an initialised CLIPResNet50Model backed by the mock."""
     from storesim.model import CLIPResNet50Model
+
     return CLIPResNet50Model(device="cpu")
 
 

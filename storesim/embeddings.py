@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Union
 
 import torch
 from PIL import Image
@@ -35,7 +35,7 @@ class EmbeddingExtractor:
 
     def extract_from_images(
         self,
-        images: Iterable[Union[str, Path, Image.Image]],
+        images: Iterable[str | Path | Image.Image],
         show_progress: bool = True,
     ) -> torch.Tensor:
         """Extract embeddings from an iterable of images.
@@ -48,10 +48,7 @@ class EmbeddingExtractor:
             Tensor of shape ``(N, embedding_dim)``.
         """
         images = list(images)
-        batches = [
-            images[i : i + self.batch_size]
-            for i in range(0, len(images), self.batch_size)
-        ]
+        batches = [images[i : i + self.batch_size] for i in range(0, len(images), self.batch_size)]
 
         all_embeddings: list[torch.Tensor] = []
         iterator = tqdm(batches, desc="Images") if show_progress else batches
@@ -87,10 +84,7 @@ class EmbeddingExtractor:
         Returns:
             Tensor of shape ``(N, embedding_dim)``.
         """
-        batches = [
-            texts[i : i + self.batch_size]
-            for i in range(0, len(texts), self.batch_size)
-        ]
+        batches = [texts[i : i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
 
         all_embeddings: list[torch.Tensor] = []
         iterator = tqdm(batches, desc="Texts") if show_progress else batches
