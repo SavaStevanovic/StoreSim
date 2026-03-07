@@ -1,0 +1,5 @@
+[core]
+    autostage = true
+    remote = localstore
+['remote "localstore"']
+    url = /home/sava/Documents/projects/StoreSim/.dvc/cache_remote
