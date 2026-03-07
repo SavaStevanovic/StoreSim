@@ -13,15 +13,14 @@ EMBEDDING_DIM = 1024  # RN50 output dimension
 
 
 # ---------------------------------------------------------------------------
-# Mock CLIP model & preprocess
+# Mock open_clip model, preprocess and tokenizer
 # ---------------------------------------------------------------------------
 
-def _make_mock_clip_model(embedding_dim: int = EMBEDDING_DIM) -> MagicMock:
-    """Return a MagicMock that behaves like openai CLIP's model object."""
+def _make_mock_open_clip_model(embedding_dim: int = EMBEDDING_DIM) -> MagicMock:
+    """Return a MagicMock that behaves like open_clip's model object."""
     mock_model = MagicMock()
     mock_model.eval.return_value = mock_model
 
-    # Simulate encode_image / encode_text returning random float16 tensors
     def encode_image(x: torch.Tensor) -> torch.Tensor:
         batch = x.shape[0]
         return torch.randn(batch, embedding_dim, dtype=torch.float16)
@@ -45,23 +44,40 @@ def _make_mock_preprocess() -> MagicMock:
     return preprocess
 
 
+def _make_mock_tokenizer() -> MagicMock:
+    """Return a callable mock that converts texts to token tensors."""
+
+    def tokenizer(texts):
+        n = len(texts) if isinstance(texts, list) else 1
+        return torch.zeros(n, 77, dtype=torch.long)
+
+    return tokenizer
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
 def mock_clip(monkeypatch):
-    """Patch clip.load and clip.tokenize globally for all tests that use it."""
-    mock_model = _make_mock_clip_model()
+    """Patch open_clip.create_model_and_transforms and get_tokenizer."""
+    mock_model = _make_mock_open_clip_model()
     mock_preprocess = _make_mock_preprocess()
+    mock_tokenizer = _make_mock_tokenizer()
 
-    with patch("clip.load", return_value=(mock_model, mock_preprocess)) as mock_load, \
-         patch("clip.tokenize", side_effect=lambda texts, **kw: torch.zeros(len(texts), 77, dtype=torch.long)) as mock_tokenize:
+    with patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(mock_model, None, mock_preprocess),
+    ) as mock_create, patch(
+        "open_clip.get_tokenizer",
+        return_value=mock_tokenizer,
+    ) as mock_get_tokenizer:
         yield {
-            "load": mock_load,
-            "tokenize": mock_tokenize,
+            "create": mock_create,
+            "get_tokenizer": mock_get_tokenizer,
             "model": mock_model,
             "preprocess": mock_preprocess,
+            "tokenizer": mock_tokenizer,
         }
 
 

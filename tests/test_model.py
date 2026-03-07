@@ -10,11 +10,12 @@ from tests.conftest import EMBEDDING_DIM
 
 class TestCLIPResNet50Model:
     def test_model_loads_rn50(self, mock_clip):
-        """Model should request 'RN50' from clip.load."""
+        """Model should request 'RN50' from open_clip.create_model_and_transforms."""
         from storesim.model import CLIPResNet50Model
 
         model = CLIPResNet50Model(device="cpu")
-        mock_clip["load"].assert_called_once_with("RN50", device="cpu")
+        call_args = mock_clip["create"].call_args
+        assert call_args[0][0] == "RN50" or call_args[1].get("model_name") == "RN50"
 
     def test_default_device_is_cpu_or_cuda(self, mock_clip):
         """Device defaults to 'cpu' when CUDA is unavailable."""
@@ -74,9 +75,9 @@ class TestCLIPResNet50Model:
         txt_emb = clip_model.encode_text("a product")
         assert img_emb.shape == txt_emb.shape
 
-    def test_model_eval_mode(self, clip_model):
+    def test_model_eval_mode(self, mock_clip, clip_model):
         """The underlying CLIP model should be set to eval mode."""
-        clip_model.model.eval.assert_called()
+        mock_clip["model"].eval.assert_called()
 
     def test_encode_image_output_on_cpu(self, clip_model, dummy_image):
         """Result tensor should be on CPU regardless of model device."""

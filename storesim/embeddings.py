@@ -87,8 +87,6 @@ class EmbeddingExtractor:
         Returns:
             Tensor of shape ``(N, embedding_dim)``.
         """
-        import clip  # local import to keep the module importable without clip when mocked
-
         batches = [
             texts[i : i + self.batch_size]
             for i in range(0, len(texts), self.batch_size)
@@ -97,7 +95,7 @@ class EmbeddingExtractor:
         all_embeddings: list[torch.Tensor] = []
         iterator = tqdm(batches, desc="Texts") if show_progress else batches
         for batch in iterator:
-            tokens = clip.tokenize(batch).to(self.model.device)
+            tokens = self.model.tokenizer(batch).to(self.model.device)
             with torch.no_grad():
                 embs = self.model.model.encode_text(tokens)
             embs = torch.nn.functional.normalize(embs.float(), dim=-1)

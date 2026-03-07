@@ -1,33 +1,43 @@
-"""CLIP ResNet50 model wrapper."""
+"""CLIP ResNet50 model wrapper (backed by open-clip-torch)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Union
 
-import clip
+import open_clip
 import torch
 from PIL import Image
 
 
 class CLIPResNet50Model:
-    """Wraps OpenAI CLIP with the RN50 (ResNet50) backbone.
+    """Wraps OpenCLIP with the RN50 (ResNet50) backbone.
 
     The model can encode both images and text into a shared embedding space,
     enabling cross-modal similarity search.
 
     Args:
         device: Target device ('cuda', 'cpu', or None for auto-detect).
+        pretrained: Pre-trained weights tag accepted by open_clip, e.g.
+                    ``'openai'`` (default) or ``'yfcc15m'``.
     """
 
     MODEL_NAME = "RN50"
+    DEFAULT_PRETRAINED = "openai"
 
-    def __init__(self, device: str | None = None) -> None:
+    def __init__(
+        self,
+        device: str | None = None,
+        pretrained: str = DEFAULT_PRETRAINED,
+    ) -> None:
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
-        self.model, self.preprocess = clip.load(self.MODEL_NAME, device=self.device)
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+            self.MODEL_NAME, pretrained=pretrained, device=self.device
+        )
         self.model.eval()
+        self.tokenizer = open_clip.get_tokenizer(self.MODEL_NAME)
 
     # ------------------------------------------------------------------
     # Encoding helpers
@@ -78,7 +88,7 @@ class CLIPResNet50Model:
         if single:
             text = [text]
 
-        tokens = clip.tokenize(text).to(self.device)
+        tokens = self.tokenizer(text).to(self.device)
         with torch.no_grad():
             features = self.model.encode_text(tokens)
 
@@ -91,5 +101,6 @@ class CLIPResNet50Model:
 
     @property
     def embedding_dim(self) -> int:
-        """Return the dimensionality of the output embeddings."""
+        """Return the dimensionality of the output embeddings (1024 for RN50)."""
         return self.model.visual.output_dim
+
