@@ -9,7 +9,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from storesim.model import CLIPResNet50Model
+from storesim.embedding_model.model import CLIPResNet50Model
 
 
 class EmbeddingExtractor:
