@@ -210,3 +210,6 @@ __marimo__/
 .dvc/cache/
 .dvc/cache_remote/
 .dvc/tmp/
+data/postgres/
+.vscode/launch.json
+.vscode/settings.json

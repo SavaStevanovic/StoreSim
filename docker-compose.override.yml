@@ -1,0 +1,20 @@
+# Development override — mount source code so edits on the host are reflected
+# inside the container instantly, and survive container restarts.
+#
+# Usage:  docker compose up          (uses both files automatically)
+#
+# docker compose automatically merges docker-compose.yml + docker-compose.override.yml.
+# For production (no override): docker compose -f docker-compose.yml up
+
+services:
+  app:
+    build:
+      context: .
+      target: builder    # skip the slim runtime stage; use the full venv layer
+    # Override CMD to enable auto-reload
+    command: ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      # Mount source directories — changes on the host are instantly visible
+      # inside the container and are persisted after the container stops.
+      - ./app:/app/app
+      - ./storesim:/app/storesim
