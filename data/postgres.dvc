@@ -1,0 +1,6 @@
+outs:
+- md5: f20e6ecd12ab709cef21f762cfec5ba3.dir
+  size: 478404225
+  nfiles: 1318
+  hash: md5
+  path: postgres

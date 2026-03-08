@@ -1,62 +1,38 @@
-"""FastAPI backend for the StoreSim product browser."""
+"""FastAPI backend for the StoreSim product browser — PostgreSQL edition."""
 
 from __future__ import annotations
 
 import math
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+import psycopg2
+import psycopg2.extras
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # ---------------------------------------------------------------------------
-# Paths
+# Config
 # ---------------------------------------------------------------------------
-ROOT = Path(__file__).parent.parent
-DATA_DIR = Path(
-    os.getenv("STORESIM_DATA_DIR", ROOT / "data" / "processed" / "amazon_products_2023")
-)
-PARQUET = DATA_DIR / "products.parquet"
+_env = Path(__file__).parent.parent / ".env"
+if _env.exists():
+    for _line in _env.read_text().splitlines():
+        k, _, v = _line.partition("=")
+        if k.strip() and v.strip() and k.strip() not in os.environ:
+            os.environ[k.strip()] = v.strip()
+
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://storesim:storesim@localhost:5432/storesim")
 STATIC_DIR = Path(__file__).parent / "static"
 
 # ---------------------------------------------------------------------------
-# App + data bootstrap
+# App
 # ---------------------------------------------------------------------------
-app = FastAPI(title="StoreSim Product Browser", version="0.1.0")
-
-_df: pd.DataFrame | None = None
-
-
-def _get_df() -> pd.DataFrame:
-    global _df
-    if _df is None:
-        if not PARQUET.exists():
-            raise RuntimeError(f"Parquet not found: {PARQUET}")
-        raw = pd.read_parquet(PARQUET)
-        # Normalise list-type columns so they JSON-serialise cleanly
-        for col in ("features", "categories"):
-            if col in raw.columns:
-                raw[col] = raw[col].apply(lambda v: list(v) if v is not None else [])
-        # Coerce NaN strings to None for clean JSON
-        for col in ("title", "description", "store", "image", "details", "main_category"):
-            if col in raw.columns:
-                raw[col] = raw[col].where(raw[col].notna(), None)
-        _df = raw
-    return _df
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    _get_df()  # warm the cache
-
-
-# ---------------------------------------------------------------------------
-# Static files + root HTML
-# ---------------------------------------------------------------------------
+app = FastAPI(title="StoreSim Product Browser", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -66,24 +42,89 @@ async def index() -> FileResponse:
 
 
 # ---------------------------------------------------------------------------
-# API - categories
+# DB helpers
+# ---------------------------------------------------------------------------
+@contextmanager
+def _db() -> Generator[psycopg2.extensions.cursor, None, None]:
+    conn = psycopg2.connect(DB_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur = conn.cursor()
+        yield cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# CTE that joins products with ratings, images and category name.
+_LATEST = """
+SELECT
+  p.id,
+  p.title,
+  p.description,
+  p.price,
+  p.date_first_available,
+  p.main_category_id,
+  p.created_at,
+  r.value   AS average_rating,
+  r.count   AS rating_count,
+  i.path    AS image,
+  c.name    AS main_category
+FROM products p
+LEFT JOIN ratings    r ON r.product_id = p.id
+LEFT JOIN images     i ON i.product_id = p.id
+LEFT JOIN categories c ON c.id = p.main_category_id
+"""
+
+
+def _row_to_card(r: dict[str, Any]) -> dict[str, Any]:
+    avg = r["average_rating"]
+    cnt = r["rating_count"]
+    return {
+        "id": r["id"],
+        "title": r["title"],
+        "image": r["image"],
+        "price": float(r["price"]) if r["price"] is not None else None,
+        "average_rating": round(float(avg), 1) if avg is not None else None,
+        "rating_count": int(cnt) if cnt is not None else None,
+        "main_category": r["main_category"],
+    }
+
+
+def _row_to_detail(r: dict[str, Any]) -> dict[str, Any]:
+    d = _row_to_card(r)
+    d.update(
+        description=r["description"],
+        main_category_id=r["main_category_id"],
+        date_first_available=(
+            r["date_first_available"].isoformat() if r["date_first_available"] else None
+        ),
+        created_at=r["created_at"].isoformat() if r["created_at"] else None,
+    )
+    return d
+
+
+# ---------------------------------------------------------------------------
+# Routes — categories
 # ---------------------------------------------------------------------------
 @app.get("/api/categories")
 async def categories() -> JSONResponse:
-    df = _get_df()
-    counts = (
-        df["main_category"]
-        .dropna()
-        .value_counts()
-        .rename_axis("category")
-        .reset_index(name="count")
-        .to_dict(orient="records")
-    )
-    return JSONResponse(counts)
+    with _db() as cur:
+        cur.execute(f"""
+            SELECT main_category AS category, COUNT(*) AS count
+            FROM ({_LATEST}) AS lp
+            WHERE main_category IS NOT NULL
+            GROUP BY main_category
+            ORDER BY count DESC
+        """)
+        rows = cur.fetchall()
+    return JSONResponse([dict(r) for r in rows])
 
 
 # ---------------------------------------------------------------------------
-# API - products (paginated, filtered, sorted)
+# Routes — products list
 # ---------------------------------------------------------------------------
 @app.get("/api/products")
 async def products(
@@ -93,59 +134,49 @@ async def products(
     search: str = Query(""),
     min_rating: float = Query(0.0, ge=0.0, le=5.0),
     max_price: float = Query(0.0, ge=0.0),
-    sort: str = Query("rating_number"),
+    sort: str = Query("rating_count"),
 ) -> JSONResponse:
-    df = _get_df().copy()
+    where_clauses: list[str] = []
+    params: list[Any] = []
 
-    # -- filters --
     if category:
-        df = df[df["main_category"] == category]
+        where_clauses.append("main_category = %s")
+        params.append(category)
     if search:
-        q = search.lower()
-        mask = df["title"].str.lower().str.contains(q, na=False)
-        df = df[mask]
+        where_clauses.append("title ILIKE %s")
+        params.append(f"%{search}%")
     if min_rating > 0:
-        df = df[df["average_rating"] >= min_rating]
+        where_clauses.append("average_rating >= %s")
+        params.append(min_rating)
     if max_price > 0:
-        df = df[df["price"] <= max_price]
+        where_clauses.append("price <= %s")
+        params.append(max_price)
 
-    # -- sort --
-    valid_sorts = {"rating_number", "average_rating", "price", "title"}
-    if sort in valid_sorts:
-        ascending = sort == "title"
-        df = df.sort_values(sort, ascending=ascending, na_position="last")
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    total = len(df)
-    total_pages = max(1, math.ceil(total / per_page))
-    page = min(page, total_pages)
+    sort_map = {
+        "rating_count": "rating_count DESC NULLS LAST",
+        "average_rating": "average_rating DESC NULLS LAST",
+        "price": "price ASC NULLS LAST",
+        "title": "title ASC",
+    }
+    order = sort_map.get(sort, "rating_count DESC NULLS LAST")
 
-    start = (page - 1) * per_page
-    page_df = df.iloc[start : start + per_page]
+    base = f"FROM ({_LATEST}) AS lp {where_sql}"
 
-    records: list[dict[str, Any]] = []
-    for row in page_df.itertuples(index=False):
-        records.append(
-            {
-                "asin": row.parent_asin,
-                "title": row.title,
-                "image": row.image,
-                "price": None
-                if (isinstance(row.price, float) and math.isnan(row.price))
-                else row.price,
-                "average_rating": (
-                    None
-                    if (isinstance(row.average_rating, float) and math.isnan(row.average_rating))
-                    else round(float(row.average_rating), 1)
-                ),
-                "rating_number": (
-                    None
-                    if (isinstance(row.rating_number, float) and math.isnan(row.rating_number))
-                    else int(row.rating_number)
-                ),
-                "main_category": row.main_category,
-                "store": row.store,
-            }
+    with _db() as cur:
+        cur.execute(f"SELECT COUNT(*) AS n {base}", params)
+        total: int = cur.fetchone()["n"]  # type: ignore[index]
+
+        total_pages = max(1, math.ceil(total / per_page))
+        page = min(page, total_pages)
+        offset = (page - 1) * per_page
+
+        cur.execute(
+            f"SELECT * {base} ORDER BY {order} LIMIT %s OFFSET %s",
+            [*params, per_page, offset],
         )
+        rows = cur.fetchall()
 
     return JSONResponse(
         {
@@ -153,48 +184,22 @@ async def products(
             "page": page,
             "per_page": per_page,
             "total_pages": total_pages,
-            "results": records,
+            "results": [_row_to_card(dict(r)) for r in rows],
         }
     )
 
 
 # ---------------------------------------------------------------------------
-# API - single product detail
+# Routes — single product
 # ---------------------------------------------------------------------------
-@app.get("/api/product/{asin}")
-async def product_detail(asin: str) -> JSONResponse:
-    df = _get_df()
-    rows = df[df["parent_asin"] == asin]
-    if rows.empty:
+@app.get("/api/product/{product_id}")
+async def product_detail(product_id: int) -> JSONResponse:
+    with _db() as cur:
+        cur.execute(f"SELECT * FROM ({_LATEST}) AS lp WHERE id = %s", [product_id])
+        row = cur.fetchone()
+    if row is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    row = rows.iloc[0]
-
-    def _safe(v: Any) -> Any:
-        if isinstance(v, float) and math.isnan(v):
-            return None
-        return v
-
-    return JSONResponse(
-        {
-            "asin": row["parent_asin"],
-            "title": row["title"],
-            "image": row["image"],
-            "description": row["description"],
-            "features": list(row["features"]) if row["features"] is not None else [],
-            "categories": list(row["categories"]) if row["categories"] is not None else [],
-            "main_category": row["main_category"],
-            "store": row["store"],
-            "price": _safe(row["price"]),
-            "average_rating": _safe(row["average_rating"]),
-            "rating_number": None
-            if _safe(row["rating_number"]) is None
-            else int(row["rating_number"]),
-            "details": row["details"],
-            "date_first_available": str(row["date_first_available"])
-            if row["date_first_available"] is not None
-            else None,
-        }
-    )
+    return JSONResponse(_row_to_detail(dict(row)))
 
 
 # ---------------------------------------------------------------------------
